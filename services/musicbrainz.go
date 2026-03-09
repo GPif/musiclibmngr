@@ -58,8 +58,7 @@ func (s *MusicBrainzService) Query(ctx context.Context, album string) ([]byte, e
 	}
 	for attempt := 0; attempt <= s.maxRetries; attempt++ {
 		if !canCall() {
-			fmt.Printf("%v : Rate limited until %v, skipping\n", time.Now(), waitUntil())
-			// Wait exactly the health duration (not s.waitingTime)
+			fmt.Printf("Rate limited until %v, skipping\n", waitUntil())
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
