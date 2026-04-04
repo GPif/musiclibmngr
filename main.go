@@ -3,16 +3,14 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"io/fs"
-	"musiclibmngr/services"
-	"net/http"
-	"os"
+	"musiclibmngr/internal/db"
+	"musiclibmngr/internal/file"
 	"path/filepath"
-	"strings"
-	"time"
+	"regexp"
 
 	"go.senan.xyz/taglib"
+	"gorm.io/gorm"
 )
 
 func readFileMeta(path string) {
@@ -27,58 +25,81 @@ func readFileMeta(path string) {
 	}
 }
 
-func detectType(path string) (string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", err
+func parseMusicPath(path string) (artist, album, trackNum, title string) {
+	re := regexp.MustCompile(`testdata/(.+)/(.+)/(\d+)\s+(.+)\.\w+$`)
+	matches := re.FindStringSubmatch(path)
+	if len(matches) == 5 {
+		return matches[1], matches[2], matches[3], matches[4]
 	}
-	defer f.Close()
-
-	buf := make([]byte, 512)
-	n, err := io.ReadFull(f, buf)
-	if err != nil {
-		return "", err
-	}
-	return http.DetectContentType(buf[:n]), nil
+	return "", "", "", ""
 }
 
-func isAudio(path string) bool {
-	t, err := detectType(path)
-	if err != nil {
-		fmt.Printf("error reading type: %v\n", err)
-		return false
-	}
-	if t == "audio/mpeg" {
-		return true
-	}
-	if strings.HasSuffix(path, ".flac") && t == "application/octet-stream" {
-		return true
-	}
-	return false
-}
-
-func main() {
-	client := &http.Client{Timeout: 30 * time.Second}
-	err := filepath.WalkDir("testdata", func(path string, d fs.DirEntry, err error) error {
+func fileScan(dbConn *db.DB) error {
+	return filepath.WalkDir("testdata", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if !d.IsDir() && isAudio(path) { // Only files (-type f)
-			fmt.Println("---------------------------")
-			fmt.Println(path)
-			readFileMeta(path)
-			album := filepath.Base(path)
-			ctx := context.Background()
-			recordService := services.NewMusicBrainzRecordServirce(client, 5)
-			buff, err := recordService.Query(ctx, album)
-			if err != nil {
+
+		if d.IsDir() {
+			return nil
+		}
+
+		desc := file.NewDescriptor(path)
+		isAudio, err := desc.IsAudio()
+		if err != nil || !isAudio {
+			return nil
+		}
+
+		fmt.Println(path)
+		artistName, album, track, title := parseMusicPath(path)
+		ctx := context.Background()
+		artist, err := gorm.G[db.Artist](dbConn.DB).Where("name = ?", artistName).First(ctx)
+		if err == gorm.ErrRecordNotFound {
+			artist = db.Artist{Name: artistName}
+			if err := gorm.G[db.Artist](dbConn.DB).Create(ctx, &artist); err != nil {
 				return err
 			}
-			fmt.Printf(string(buff))
 		}
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Artist: %s\nAlbum: %s\nTrack: %s\nTitle: %s\n",
+			artistName, album, track, title)
+
 		return nil
 	})
+}
+
+func main() {
+
+	dbConn, err := db.New("test.db")
+
 	if err != nil {
 		panic(err)
 	}
+
+	fileScan(dbConn)
+	// client := &http.Client{Timeout: 30 * time.Second}
+	// err := filepath.WalkDir("testdata", func(path string, d fs.DirEntry, err error) error {
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	if !d.IsDir() && isAudio(path) { // Only files (-type f)
+	// 		fmt.Println("---------------------------")
+	// 		fmt.Println(path)
+	// 		readFileMeta(path)
+	// 		album := filepath.Base(path)
+	// 		ctx := context.Background()
+	// 		recordService := services.NewMusicBrainzRecordServirce(client, 5)
+	// 		buff, err := recordService.Query(ctx, album)
+	// 		if err != nil {
+	// 			return err
+	// 		}
+	// 		fmt.Printf(string(buff))
+	// 	}
+	// 	return nil
+	// })
+	// if err != nil {
+	// 	panic(err)
+	// }
 }
