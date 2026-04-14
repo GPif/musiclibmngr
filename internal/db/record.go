@@ -5,6 +5,7 @@ import "gorm.io/gorm"
 type Record struct {
 	gorm.Model
 	ID            uint `gorm:"primaryKey;autoIncrement:true"`
+	ArtistID      int
 	Title         string
 	ReleaseID     int
 	SupportNumber *int
