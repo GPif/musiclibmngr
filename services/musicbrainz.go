@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"musiclibmngr/internal/repo"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -111,4 +112,15 @@ func buildReleaseUrl(baseURL string, album string) string {
 	params.Set("query", album)
 	params.Set("fmt", "json")
 	return baseURL + "?" + params.Encode()
+}
+
+func toQuery(music repo.MusicFile) string {
+	query := ""
+	if len(music.Artist) > 0 {
+		query += "artist:" + music.Artist + "~"
+	}
+	if len(music.Record) > 0 {
+		query += "record:" + music.Record + "~"
+	}
+	return query
 }

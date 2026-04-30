@@ -4,19 +4,18 @@ Copyright © 2026 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io/fs"
 	"musiclibmngr/internal/db"
 	"musiclibmngr/internal/file"
+	"musiclibmngr/internal/pathmatcher"
 	"os"
 	"path/filepath"
-	"regexp"
 
+	"github.com/jo-hoe/chromaprint"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"gorm.io/gorm"
 )
 
 func validArgs(cmd *cobra.Command, args []string) error {
@@ -32,15 +31,6 @@ func validArgs(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("Error: The provided path does not exist: %s\n", filePath)
 	}
 	return nil
-}
-
-func parseMusicPath(path string) (artist, album, trackNum, title string) {
-	re := regexp.MustCompile(`testdata/(.+)/(.+)/(\d+)\s+(.+)\.\w+$`)
-	matches := re.FindStringSubmatch(path)
-	if len(matches) == 5 {
-		return matches[1], matches[2], matches[3], matches[4]
-	}
-	return "", "", "", ""
 }
 
 func fileScan(baseDir string, dbConn *db.DB) error {
@@ -60,21 +50,48 @@ func fileScan(baseDir string, dbConn *db.DB) error {
 		}
 
 		fmt.Println(path)
-		artistName, album, track, title := parseMusicPath(path)
-		ctx := context.Background()
-		artist, err := gorm.G[db.Artist](dbConn.DB).Where("name = ?", artistName).First(ctx)
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			artist = db.Artist{Name: artistName}
-			if err := gorm.G[db.Artist](dbConn.DB).Create(ctx, &artist); err != nil {
-				return err
-			}
-		}
+
+		relativePath, err := filepath.Rel(baseDir, path)
 		if err != nil {
 			return err
 		}
-		fmt.Printf("Artist: %s\nAlbum: %s\nTrack: %s\nTitle: %s\n",
-			artistName, album, track, title)
 
+		standardTrackFormat := viper.GetString("standard_track_format")
+		multiDiscTrackFormat := viper.GetString("multi_disc_track_format")
+		matcher := pathmatcher.NewMatcher()
+
+		fmt.Println("# Matcher")
+
+		var m map[string]string
+		for _, format := range []string{multiDiscTrackFormat, standardTrackFormat} {
+			m, err = matcher.ExtractData(format, relativePath)
+			if !errors.Is(err, pathmatcher.ErrInvalidTemplate) {
+				break
+			}
+		}
+		fmt.Printf("%v\n", m)
+
+		fmt.Println("# Extract tag")
+
+		tags, err := file.ExtractTag(path)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("%v\n", tags)
+
+		fmt.Println("# Fingerprint")
+
+		cp, err := chromaprint.NewBuilder().Build()
+		if err != nil {
+			return err
+		}
+
+		fps, err := cp.CreateFingerprints(path)
+		if err != nil {
+			fmt.Println(err)
+		}
+
+		fmt.Printf("%+v\n", fps)
 		return nil
 	})
 }
@@ -97,7 +114,11 @@ var importCmd = &cobra.Command{
 			panic(err)
 		}
 
-		fileScan(filePath, dbConn)
+		err = fileScan(filePath, dbConn)
+		if err != nil {
+			fmt.Println(err)
+			panic(err)
+		}
 	},
 }
 

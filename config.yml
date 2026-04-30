@@ -1,1 +1,3 @@
 db: test.db
+standard_track_format: "{Artist}/{Album Title} ({Release Year})/{track:00} {Track Title}"
+multi_disc_track_format: "{Artist}/{Album Title} ({Release Year})/{Medium Format} {medium:00}/{track:00} - {Track Title}"

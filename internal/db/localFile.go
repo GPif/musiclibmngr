@@ -6,5 +6,9 @@ type LocalFile struct {
 	gorm.Model
 	ID       uint `gorm:"primaryKey;autoIncrement:true"`
 	Path     string
-	RecordID int
+	RecordID uint
+}
+
+func AddFile(path string, track int, title string, album string, artist string) {
+
 }
