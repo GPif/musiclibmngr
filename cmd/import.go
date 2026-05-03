@@ -4,16 +4,14 @@ Copyright © 2026 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
-	"errors"
 	"fmt"
 	"io/fs"
 	"musiclibmngr/internal/db"
 	"musiclibmngr/internal/file"
-	"musiclibmngr/internal/pathmatcher"
+	"musiclibmngr/internal/importer"
 	"os"
 	"path/filepath"
 
-	"github.com/jo-hoe/chromaprint"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -34,7 +32,10 @@ func validArgs(cmd *cobra.Command, args []string) error {
 }
 
 func fileScan(baseDir string, dbConn *db.DB) error {
-	return filepath.WalkDir(baseDir, func(path string, d fs.DirEntry, err error) error {
+
+	fileMap := make(map[string]*importer.ImportTask)
+
+	res := filepath.WalkDir(baseDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -49,51 +50,30 @@ func fileScan(baseDir string, dbConn *db.DB) error {
 			return nil
 		}
 
-		fmt.Println(path)
-
 		relativePath, err := filepath.Rel(baseDir, path)
 		if err != nil {
 			return err
 		}
 
-		standardTrackFormat := viper.GetString("standard_track_format")
-		multiDiscTrackFormat := viper.GetString("multi_disc_track_format")
-		matcher := pathmatcher.NewMatcher()
+		baseFile, _ := filepath.Split(relativePath)
 
-		fmt.Println("# Matcher")
-
-		var m map[string]string
-		for _, format := range []string{multiDiscTrackFormat, standardTrackFormat} {
-			m, err = matcher.ExtractData(format, relativePath)
-			if !errors.Is(err, pathmatcher.ErrInvalidTemplate) {
-				break
-			}
-		}
-		fmt.Printf("%v\n", m)
-
-		fmt.Println("# Extract tag")
-
-		tags, err := file.ExtractTag(path)
-		if err != nil {
-			return err
-		}
-		fmt.Printf("%v\n", tags)
-
-		fmt.Println("# Fingerprint")
-
-		cp, err := chromaprint.NewBuilder().Build()
-		if err != nil {
-			return err
+		if existing, ok := fileMap[baseFile]; ok {
+			existing.Paths = append(fileMap[baseFile].Paths, path)
+		} else {
+			fileMap[baseFile] = &importer.ImportTask{Paths: []string{path}}
 		}
 
-		fps, err := cp.CreateFingerprints(path)
-		if err != nil {
-			fmt.Println(err)
-		}
-
-		fmt.Printf("%+v\n", fps)
 		return nil
 	})
+
+
+	tasks := make([]*importer.ImportTask, 0, len(fileMap))
+	for _, task := range fileMap {
+		tasks = append(tasks, task)
+	}
+
+
+	return res
 }
 
 // importCmd represents the import command
