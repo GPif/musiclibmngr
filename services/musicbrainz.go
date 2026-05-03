@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -51,8 +52,8 @@ func NewMusicBrainzRecordServirce(client *http.Client, maxRetries int) *MusicBra
 	}
 }
 
-func (s *MusicBrainzService) Query(ctx context.Context, album string) ([]byte, error) {
-	fullURL := buildReleaseUrl(s.baseURL, album)
+func (s *MusicBrainzService) Query(ctx context.Context, music repo.MusicFile) ([]byte, error) {
+	fullURL := buildReleaseUrl(s.baseURL, toQuery(music))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)
 	if err != nil {
 		return nil, err
@@ -107,20 +108,22 @@ func (s *MusicBrainzService) Query(ctx context.Context, album string) ([]byte, e
 	return nil, fmt.Errorf("max retries exceeded")
 }
 
-func buildReleaseUrl(baseURL string, album string) string {
+func buildReleaseUrl(baseURL string, qry string) string {
 	params := url.Values{}
-	params.Set("query", album)
+	params.Set("query", qry)
 	params.Set("fmt", "json")
+	params.Set("limit", "4")
 	return baseURL + "?" + params.Encode()
 }
 
 func toQuery(music repo.MusicFile) string {
-	query := ""
+	query_slice := []string{}
 	if len(music.Artist) > 0 {
-		query += "artist:" + music.Artist + "~"
+		query_slice = append(query_slice, "artist:" + music.Artist)
 	}
-	if len(music.Record) > 0 {
-		query += "record:" + music.Record + "~"
+	if len(music.Release) > 0 {
+		query_slice = append(query_slice, "release-group:" + music.Release)
 	}
-	return query
+	query_slice = append(query_slice, "tracks:" + music.Release)
+	return strings.Join(query_slice, " AND ")
 }
