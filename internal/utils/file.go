@@ -1,4 +1,4 @@
-package file
+package utils
 
 import (
 	"fmt"
@@ -8,23 +8,15 @@ import (
 	"strings"
 )
 
-type Descriptor struct {
-	path string
-}
-
-func NewDescriptor(path string) *Descriptor {
-	return &Descriptor{path: path}
-}
-
-func (d *Descriptor) IsAudio() (bool, error) {
-	t, err := detectType(d.path)
+func IsAudio(path string) (bool, error) {
+	t, err := detectType(path)
 	if err != nil {
 		return false, fmt.Errorf("failed to detect type: %w", err)
 	}
 	if t == "audio/mpeg" {
 		return true, nil
 	}
-	if strings.HasSuffix(d.path, ".flac") && t == "application/octet-stream" {
+	if strings.HasSuffix(path, ".flac") && t == "application/octet-stream" {
 		return true, nil
 	}
 	return false, nil

@@ -4,16 +4,12 @@ Copyright © 2026 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
+	"context"
 	"fmt"
-	"io/fs"
-	"musiclibmngr/internal/db"
-	"musiclibmngr/internal/file"
 	"musiclibmngr/internal/importer"
 	"os"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 func validArgs(cmd *cobra.Command, args []string) error {
@@ -31,51 +27,6 @@ func validArgs(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func fileScan(baseDir string, dbConn *db.DB) error {
-
-	fileMap := make(map[string]*importer.ImportTask)
-
-	res := filepath.WalkDir(baseDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if d.IsDir() {
-			return nil
-		}
-
-		desc := file.NewDescriptor(path)
-		isAudio, err := desc.IsAudio()
-		if err != nil || !isAudio {
-			return nil
-		}
-
-		relativePath, err := filepath.Rel(baseDir, path)
-		if err != nil {
-			return err
-		}
-
-		baseFile, _ := filepath.Split(relativePath)
-
-		if existing, ok := fileMap[baseFile]; ok {
-			existing.Paths = append(fileMap[baseFile].Paths, path)
-		} else {
-			fileMap[baseFile] = &importer.ImportTask{Paths: []string{path}}
-		}
-
-		return nil
-	})
-
-
-	tasks := make([]*importer.ImportTask, 0, len(fileMap))
-	for _, task := range fileMap {
-		tasks = append(tasks, task)
-	}
-
-
-	return res
-}
-
 // importCmd represents the import command
 var importCmd = &cobra.Command{
 	Use:   "import",
@@ -88,17 +39,14 @@ var importCmd = &cobra.Command{
 			return
 		}
 		filePath := args[0]
-		dbPath := viper.GetString("db")
-		dbConn, err := db.New(string(dbPath))
+		// dbPath := viper.GetString("db")
+		// dbConn, err := db.New(string(dbPath))
 		if err != nil {
 			panic(err)
 		}
 
-		err = fileScan(filePath, dbConn)
-		if err != nil {
-			fmt.Println(err)
-			panic(err)
-		}
+		ctx := context.Background()
+		importer.Run(ctx, filePath)
 	},
 }
 
